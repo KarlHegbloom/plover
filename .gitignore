@@ -1,3 +1,6 @@
+debian/files
+debian/plover*
+
 *.py[cod]
 
 # C extensions
