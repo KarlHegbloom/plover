@@ -1,3 +1,5 @@
+# -*- coding: utf8
+#
 from plover.steno import normalize_steno
 
 STROKE = "STROKE"
