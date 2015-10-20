@@ -28,11 +28,15 @@ class Stenotype(StenotypeBase):
         self._keyboard_capture = keyboardcontrol.KeyboardCapture()
         self._keyboard_capture.key_down = self._key_down
         self._keyboard_capture.key_up = self._key_up
-        self.suppress_keyboard(True)
         self._down_keys = set()
         self._released_keys = set()
         self.arpeggiate = params['arpeggiate']
         self.keymap = params['keymap'].to_dict()
+        #try: # Not implemented for Mac or Windows so catch the exception and don't worry about it.
+        self._keyboard_capture.set_suppressed_keys_from_bound_keys_list(self.keymap.keys())
+        #except:
+        #    pass
+        self.suppress_keyboard(True)
 
     def start_capture(self):
         """Begin listening for output from the stenotype machine."""

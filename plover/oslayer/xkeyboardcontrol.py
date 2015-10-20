@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+# -*- python -*-
+#
 # Copyright (c) 2010 Joshua Harlan Lifton.
 # See LICENSE.txt for details.
 #
@@ -35,6 +36,21 @@ but could not be found."
 
 keyboard_capture_instances = []
 
+# The pseudokeys here are generic. The keycodes are relatively archane
+# and part of pc-keyboard scancode --> linux --> Xwindows. Outside of
+# this module, nothing is expected to know the keycodes; eg, the key
+# layout configuration dialog and etc. elsewhere in plover.
+#
+# This table is used to sort of force a US QWERTY layout
+# interpretation, even if the user's XKB layout is dvorak or colemak
+# or whatever, so that this layer hands the right thing up to the
+# steno-machine abstraction, so that it can turn the user's alphabet
+# keyboarding into steno machine keyboarding, e.g. q --> S-, w --> T-,
+# ... At this module's layer, pushing the key just to the right of the
+# wide one marked "Cap" should give us an "a", even if the user, with
+# plover turned off, has a dvorak or colemak layout, since the
+# physical layout of the "steno" keyboard is not something to remap.
+#
 KEYCODE_TO_PSEUDOKEY = {
     # Number row.
     49: ord("`"),
@@ -91,6 +107,52 @@ KEYCODE_TO_PSEUDOKEY = {
     65: ord(" "),
 }
 
+# If the user-customized keymap contains keys from the function bar,
+# then those keys must be suppressed also, so that they are not seen
+# by e.g. gnome-terminal or emacs, but instead are fully grabbed by
+# plover so the application only sees plover's translated version of
+# the user's keyboard input.
+#
+# On the other hand, if the user enters steno on the regular home-row
+# keys, the function keys should not be suppressed, in case they are
+# in use outside of plover and expected to perform their normal
+# function. They should only be suppressed when they are bound within
+# plover.
+#
+PSEUDOKEY_TO_KEYCODE_EXTRA = { # canonicalize to uppercase for lookup
+    'ESC': 9,
+    'F1': 67,
+    'F2': 68,
+    'F3': 69,
+    'F4': 70,
+    'F5': 71,
+    'F6': 72,
+    'F7': 73,
+    'F8': 74,
+    'F9': 75,
+    'F10': 76,
+    'F11': 95,
+    'F12': 96,
+    # 'ESC': 1,
+    # 'F1': 59,
+    # 'F2': 60,
+    # 'F3': 61,
+    # 'F4': 62,
+    # 'F5': 63,
+    # 'F6': 64,
+    # 'F7': 65,
+    # 'F8': 66,
+    # 'F9': 67,
+    # 'F10': 68,
+    # 'F11': 87,
+    # 'F12': 88,
+    #
+    # !! Any others that people might bind must be added here!!
+    #
+    # I think for this set, they are unlikely to have been remapped by
+    # a dvorak or colemak layout.
+}
+
 class KeyboardCapture(threading.Thread):
     """Listen to keyboard press and release events."""
 
@@ -108,6 +170,7 @@ class KeyboardCapture(threading.Thread):
         self.local_display = display.Display()
         self.record_display = display.Display()
 
+        self.keycodes_to_suppress = KEYCODE_TO_PSEUDOKEY.keys()
         self.is_suppressed = False
         self.grab_window = self.local_display.screen().root
 
@@ -163,6 +226,21 @@ class KeyboardCapture(threading.Thread):
     def can_suppress_keyboard(self):
         return True
 
+    # kl is a list of strings, from the NKRO keymap, e.g. ["F1", "F2", ...]
+    # This should be called once after the KeyboardCapture object is
+    # instantiated, before using the suppress_keyboard method.
+    #
+    # Because this is not implemented for OSX and Windows, check for
+    # the existence of the method before calling it.
+    #
+    def set_suppressed_keys_from_bound_keys_list(self, kl):
+        sl = []
+        for k in kl:
+            keycode = PSEUDOKEY_TO_KEYCODE_EXTRA.get(k.upper(), None)
+            if keycode is not None:
+                sl += [keycode]
+        self.keycodes_to_suppress = sl + KEYCODE_TO_PSEUDOKEY.keys()
+
     def suppress_keyboard(self, suppress):
         if self.is_suppressed == suppress:
             return
@@ -170,7 +248,8 @@ class KeyboardCapture(threading.Thread):
             fn = self.grab_key
         else:
             fn = self.ungrab_key
-        for keycode in KEYCODE_TO_PSEUDOKEY.keys():
+        for keycode in self.keycodes_to_suppress:
+            #print "%i" % keycode
             fn(keycode)
         self.local_display.sync()
         self.is_suppressed = suppress
@@ -200,6 +279,9 @@ class KeyboardCapture(threading.Thread):
             keysym = self.local_display.keycode_to_keysym(keycode, modifiers)
             if modifiers == 0:
                 keysym = KEYCODE_TO_PSEUDOKEY.get(keycode, keysym)
+            print keycode
+            print keysym
+            print
             key_event = XKeyEvent(keycode, modifiers, keysym)
             # Either ignore the event...
             if self.key_events_to_ignore:
