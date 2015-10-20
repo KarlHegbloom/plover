@@ -19,7 +19,7 @@ DO_FILTER_BUTTON_NAME = 'Filter'
 INSERT_BUTTON_NAME = 'New Entry'
 DELETE_BUTTON_NAME = 'Delete Selected'
 SAVE_BUTTON_NAME = 'Save and Close'
-CANCEL_BUTTON_NAME = 'Cancel'
+CANCEL_BUTTON_NAME = 'Close'
 
 NUM_COLS = len(COLUMNS)
 
@@ -28,9 +28,7 @@ class DictionaryEditor(wx.Dialog):
 
     BORDER = 3
 
-    other_instances = []
-
-    def __init__(self, parent, engine, config):
+    def __init__(self, parent, engine, config, on_exit):
         pos = (config.get_dictionary_editor_frame_x(),
                config.get_dictionary_editor_frame_y())
         wx.Dialog.__init__(self, parent, wx.ID_ANY, TITLE,
@@ -39,8 +37,7 @@ class DictionaryEditor(wx.Dialog):
                            wx.DialogNameStr)
 
         self.config = config
-
-        self.show_closing_prompt = True
+        self.on_exit = on_exit
 
         # layout
         global_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -145,14 +142,6 @@ class DictionaryEditor(wx.Dialog):
 
         self.last_window = util.GetForegroundWindow()
 
-        # Now that we saved the last window we'll close other instances. This
-        # may restore their original window but we've already saved ours so
-        # it's fine.
-        for instance in self.other_instances:
-            instance.Close()
-        del self.other_instances[:]
-        self.other_instances.append(self)
-
     def _do_filter(self, event=None):
         threading.Thread(target=self._do_filter_thread).start()
 
@@ -168,12 +157,10 @@ class DictionaryEditor(wx.Dialog):
         self.grid.DeleteSelected()
 
     def _save_close(self, event=None):
-        self.show_closing_prompt = False
         self.store.SaveChanges()
         self.Close()
 
     def _cancel_close(self, event=None):
-        self.show_closing_prompt = True
         self.Close()
 
     def _on_move(self, event):
@@ -184,7 +171,7 @@ class DictionaryEditor(wx.Dialog):
 
     def _on_close(self, event=None):
         result = wx.ID_YES
-        if self.show_closing_prompt:
+        if self.store.pending_changes:
             dlg = wx.MessageDialog(self,
                                    "You will lose your changes. Are you sure?",
                                    "Cancel",
@@ -196,7 +183,7 @@ class DictionaryEditor(wx.Dialog):
                 util.SetForegroundWindow(self.last_window)
             except:
                 pass
-            self.other_instances.remove(self)
+            self.on_exit()
             self.Destroy()
 
 
@@ -360,7 +347,17 @@ class DictionaryEditorGridTable(PyGridTableBase):
 
 
 def Show(parent, engine, config):
-    dialog_instance = DictionaryEditor(parent, engine, config)
-    dialog_instance.Show()
-    dialog_instance.Raise()
+    if 'dialog_instance' not in Show.__dict__:
+        Show.dialog_instance = None
+
+    def clear_instance():
+        Show.dialog_instance = None
+
+    if Show.dialog_instance is None:
+        Show.dialog_instance = DictionaryEditor(parent,
+                                                engine,
+                                                config,
+                                                clear_instance)
+    Show.dialog_instance.Show()
+    Show.dialog_instance.Raise()
     util.SetTopApp()
