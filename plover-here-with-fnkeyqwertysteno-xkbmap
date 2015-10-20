@@ -1,4 +1,4 @@
 #!/bin/sh
 setxkbmap fnkeyqwertysteno
-./plover-here.py
+./plover-here
 setxkbmap us
