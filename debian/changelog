@@ -1,3 +1,9 @@
+plover (2.5.8-2.2-git-bp-keyrework1) unstable; urgency=low
+
+  * Merged benoit-pierre:keyboard-handling-rework for testing.
+
+ -- Karl M. Hegbloom <karl.hegbloom@gmail.com>  Thu, 29 Oct 2015 12:40:30 -0600
+
 plover (2.5.8-2.1-git) unstable; urgency=low
 
   * My build, from git
