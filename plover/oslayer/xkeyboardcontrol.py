@@ -3,11 +3,9 @@
 #
 # keyboardcontrol.py - capturing and injecting X keyboard events
 #
-# This code requires the X Window System with the 'record' extension
-# and python-xlib 1.4 or greater.
+# This code requires the X Window System with the 'XInput2' and 'XTest'
+# extensions and python-xlib with support for said extensions.
 #
-# This code is based on the AutoKey and pyxhook programs, both of
-# which use python-xlib.
 
 """Keyboard capture and control using Xlib.
 
@@ -25,12 +23,13 @@ http://tronche.com/gui/x/xlib/input/keyboard-encoding.html
 import sys
 import threading
 
-from Xlib import X, XK, display
-from Xlib.ext import record, xtest
+from Xlib import X, XK, display, threaded
+from Xlib.ext import xinput, xtest
+from Xlib.ext.ge import GenericEventCode
 from Xlib.protocol import rq, event
 
-RECORD_EXTENSION_NOT_FOUND = "Xlib's RECORD extension is required, \
-but could not be found."
+XINPUT_DEVICE_ID = xinput.AllMasterDevices
+XINPUT_EVENT_MASK = xinput.KeyPressMask | xinput.KeyReleaseMask
 
 keyboard_capture_instances = []
 
@@ -112,47 +111,52 @@ class KeyboardCapture(threading.Thread):
         """Prepare to listen for keyboard events."""
         threading.Thread.__init__(self)
         self.context = None
-        self.key_events_to_ignore = []
         self.suppressed_keys = suppressed_keys
+        self.is_suppressed = False
 
         # Assign default callback functions.
         self.key_down = lambda x: True
         self.key_up = lambda x: True
 
         # Get references to the display.
-        self.local_display = display.Display()
-        self.record_display = display.Display()
+        self.display = display.Display()
+        self.window = self.display.screen().root
 
-        self.is_suppressed = False
-        self.grab_window = self.local_display.screen().root
+        # Find XTest keyboard device ID, so we can ignore its events.
+        self.xtest_keyboard = 0
+        for devinfo in self.display.xinput_query_device(xinput.AllDevices).devices:
+            if 'Virtual core XTEST keyboard' == devinfo.name:
+                self.xtest_keyboard = devinfo.deviceid
+                break
 
     def run(self):
-        # Check if the extension is present
-        if not self.record_display.has_extension("RECORD"):
-            raise Exception(RECORD_EXTENSION_NOT_FOUND)
-            sys.exit(1)
-        # Create a recording context for key events.
-        self.context = self.record_display.record_create_context(
-                                 0,
-                                 [record.AllClients],
-                                 [{'core_requests': (0, 0),
-                                   'core_replies': (0, 0),
-                                   'ext_requests': (0, 0, 0, 0),
-                                   'ext_replies': (0, 0, 0, 0),
-                                   'delivered_events': (0, 0),
-                                   'device_events': (X.KeyPress, X.KeyRelease),
-                                   'errors': (0, 0),
-                                   'client_started': False,
-                                   'client_died': False,
-                                   }])
-
-        # This method returns only after record_disable_context is
-        # called. Until then, the callback function will be called
-        # whenever an event occurs.
-        self.record_display.record_enable_context(self.context,
-                                                  self.process_events)
-        # Clean up.
-        self.record_display.record_free_context(self.context)
+        self.window.xinput_select_events(((XINPUT_DEVICE_ID, XINPUT_EVENT_MASK),))
+        while True:
+            event = self.display.next_event()
+            if event.type != GenericEventCode:
+                continue
+            if not event.evtype in (xinput.KeyPress, xinput.KeyRelease):
+                continue
+            keycode = event.data.detail
+            modifiers = event.data.mods.effective_mods & ~0b10000 & 0xFF
+            sourceid = event.data.sourceid
+            # Ignore XTest events.
+            if self.xtest_keyboard == sourceid:
+                continue
+            if 0 != modifiers:
+                continue
+            # Ignore repeat events.
+            if 0 != (event.data.flags & xinput.KeyRepeat):
+                continue
+            key = KEYCODE_TO_KEY.get(keycode, None)
+            if not key in self.suppressed_keys:
+                # Not a supported/suppressed key, ignore...
+                continue
+            # ...or pass it on to a callback method.
+            if event.evtype == xinput.KeyPress:
+                self.key_down(key)
+            elif event.evtype == xinput.KeyRelease:
+                self.key_up(key)
 
     def start(self):
         """Starts the thread after registering with a global list."""
@@ -161,22 +165,27 @@ class KeyboardCapture(threading.Thread):
 
     def cancel(self):
         """Stop listening for keyboard events."""
-        if self.context is not None:
-            self.local_display.record_disable_context(self.context)
-        self.local_display.flush()
+        self.display.flush()
         if self in keyboard_capture_instances:
             keyboard_capture_instances.remove(self)
 
-    def grab_key(self, keycode):
-        for modifiers in (0, X.Mod2Mask):
-            self.grab_window.grab_key(keycode, modifiers, False, X.GrabModeAsync, X.GrabModeAsync)
-
-    def ungrab_key(self, keycode):
-        for modifiers in (0, X.Mod2Mask):
-            self.grab_window.ungrab_key(keycode, modifiers)
-
     def can_suppress_keyboard(self):
         return True
+
+    def grab_key(self, keycode):
+        self.window.xinput_grab_keycode(XINPUT_DEVICE_ID,
+                                        X.CurrentTime,
+                                        keycode,
+                                        xinput.GrabModeAsync,
+                                        xinput.GrabModeAsync,
+                                        True,
+                                        XINPUT_EVENT_MASK,
+                                        (0, X.Mod2Mask))
+
+    def ungrab_key(self, keycode):
+        self.window.xinput_ungrab_keycode(XINPUT_DEVICE_ID,
+                                          keycode,
+                                          (0, X.Mod2Mask))
 
     def suppress_keyboard(self, suppress):
         if self.is_suppressed == suppress:
@@ -187,70 +196,11 @@ class KeyboardCapture(threading.Thread):
             fn = self.ungrab_key
         for key in self.suppressed_keys:
             fn(KEY_TO_KEYCODE[key])
-        self.local_display.sync()
+        self.display.sync()
         self.is_suppressed = suppress
 
     def is_keyboard_suppressed(self):
         return self.is_suppressed
-
-    def process_events(self, reply):
-        """Handle keyboard events.
-
-        This usually means passing them off to other callback methods. 
-        """
-        if reply.category != record.FromServer:
-            return
-        if reply.client_swapped:
-            # Ignoring swapped protocol data.
-            return
-        if not len(reply.data) or ord(reply.data[0]) < 2:
-            # Not an event.
-            return
-        data = reply.data
-        while len(data):
-            event, data = rq.EventField(None).parse_binary_value(data,
-                                       self.record_display.display, None, None)
-            keycode = event.detail
-            modifiers = event.state & ~0b10000 & 0xFF
-            # Either ignore the event...
-            if self.key_events_to_ignore:
-                ignore_keycode, ignore_event_type = self.key_events_to_ignore[0]
-                if (keycode == ignore_keycode and
-                    event.type == ignore_event_type):
-                    self.key_events_to_ignore.pop(0)
-                    continue
-            # Ignore event if a modifier is set.
-            if modifiers != 0:
-                continue
-            key = KEYCODE_TO_KEY.get(keycode, None)
-            if not key in self.suppressed_keys:
-                # Not a supported/suppressed key, ignore...
-                continue
-            # ...or pass it on to a callback method.
-            if event.type == X.KeyPress:
-                self.key_down(key)
-            elif event.type == X.KeyRelease:
-                self.key_up(key)
-
-    def ignore_key_events(self, key_events):
-        """A sequence of keycode, event type tuples to ignore.
-
-        The sequence of keycode, event type pairs is added to a
-        queue. The first keycode event that matches the head of the
-        queue is ignored and the head of the queue is removed. This
-        method can be used in combination with
-        KeyboardEmulation.send_key_combination to prevent loops.
-
-        Argument:
-
-        key_events -- The sequence of keycode, event type tuples to
-        ignore. Each element of the sequence is a two-tuple, the first
-        element of which is a keycode (integer in [8-255], inclusive)
-        and the second element of which is either Xlib.X.KeyPress or
-        Xlib.X.KeyRelease.
-
-        """
-        self.key_events_to_ignore += key_events
 
 
 class KeyboardEmulation(object):
@@ -298,10 +248,6 @@ class KeyboardEmulation(object):
 
     def send_key_combination(self, combo_string):
         """Emulate a sequence of key combinations.
-
-        KeyboardCapture instance would normally detect the emulated
-        key events. In order to prevent this, all KeyboardCapture
-        instances are told to ignore the emulated key events.
 
         Argument:
 
@@ -360,11 +306,6 @@ class KeyboardEmulation(object):
         # Release all keys.
         for keycode in key_down_stack:
             keycode_events.append((keycode, X.KeyRelease))
-
-        # Tell all KeyboardCapture instances to ignore the key
-        # events that are about to be sent.
-        for capture in keyboard_capture_instances:
-            capture.ignore_key_events(keycode_events)
 
         # Emulate the key combination by sending key events.
         for keycode, event_type in keycode_events:
