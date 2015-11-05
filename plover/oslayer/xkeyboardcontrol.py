@@ -20,7 +20,9 @@ http://tronche.com/gui/x/xlib/input/keyboard-encoding.html
 
 """
 
+import os
 import sys
+import select
 import threading
 
 from Xlib import X, XK, display, threaded
@@ -132,9 +134,21 @@ class KeyboardCapture(threading.Thread):
                 self.xtest_keyboard = devinfo.deviceid
                 break
 
+        self.pipe = os.pipe()
+
     def run(self):
         self.window.xinput_select_events(((XINPUT_DEVICE_ID, XINPUT_EVENT_MASK),))
+        display_fileno = self.display.fileno()
         while True:
+            if not self.display.pending_events():
+                rlist, wlist, xlist = select.select((self.pipe[0],
+                                                     display_fileno),
+                                                    (), ())
+                if self.pipe[0] in rlist:
+                    break
+                # If we're here, rlist should contains display_fileno,
+                # trigger a new iteration to check with for pending events.
+                continue
             event = self.display.next_event()
             if event.type != GenericEventCode:
                 continue
@@ -168,7 +182,11 @@ class KeyboardCapture(threading.Thread):
 
     def cancel(self):
         """Stop listening for keyboard events."""
-        self.display.flush()
+        # Wake up the capture thread...
+        os.write(self.pipe[1], 'quit')
+        # ...and wait for it to terminate.
+        self.join()
+        self.display.close()
         if self in keyboard_capture_instances:
             keyboard_capture_instances.remove(self)
 
