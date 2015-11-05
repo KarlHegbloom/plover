@@ -28,7 +28,7 @@ from Xlib.ext import xinput, xtest
 from Xlib.ext.ge import GenericEventCode
 from Xlib.protocol import rq, event
 
-XINPUT_DEVICE_ID = xinput.AllMasterDevices
+XINPUT_DEVICE_ID = xinput.AllDevices
 XINPUT_EVENT_MASK = xinput.KeyPressMask | xinput.KeyReleaseMask
 
 keyboard_capture_instances = []
