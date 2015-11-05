@@ -122,6 +122,9 @@ class KeyboardCapture(threading.Thread):
         self.display = display.Display()
         self.window = self.display.screen().root
 
+        if not self.display.has_extension('XInputExtension'):
+            raise Exception('Xlib\'s XInput extension is required, but could not be found.')
+
         # Find XTest keyboard device ID, so we can ignore its events.
         self.xtest_keyboard = 0
         for devinfo in self.display.xinput_query_device(xinput.AllDevices).devices:
