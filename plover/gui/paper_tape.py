@@ -54,10 +54,25 @@ class StrokeDisplayDialog(wx.Dialog):
         sizer.Add(box, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 
                   border=UI_BORDER)
 
+        # Look for a fixed font.
+        font_size = wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT).GetPointSize()
+        for face in (
+            'Courier',
+            'Courier New',
+            'monospace',
+        ):
+            fixed_font = wx.Font(12,
+                                 wx.FONTFAMILY_DEFAULT,
+                                 wx.FONTSTYLE_NORMAL,
+                                 wx.FONTWEIGHT_NORMAL,
+                                 face=face)
+            if fixed_font.IsFixedWidth():
+                break
+        print 'fixed font: %s [%u]' % (fixed_font.GetFaceName(),
+                                       fixed_font.GetPointSize())
+
         # Calculate required width.
         dc = wx.MemoryDC()
-        fixed_font = dc.GetFont()
-        fixed_font.SetFamily(wx.FONTFAMILY_MODERN)
         dc.SetFont(fixed_font)
         text_width = dc.GetTextExtent(ALL_KEYS + 2 * ' ')[0]
 
