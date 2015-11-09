@@ -43,17 +43,40 @@ class SuggestionsDisplayDialog(wx.Dialog):
         box = wx.BoxSizer(wx.HORIZONTAL)
 
         self.header = MyStaticText(self, label=LAST_WORD_TEXT % DEFAULT_LAST_WORD)
-        font = self.header.GetFont()
-        font.SetFaceName("Courier")
-        self.header.SetFont(font)
+
+        # Look for a fixed font.
+        font_size = wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT).GetPointSize()
+        for face in (
+            'monospace',
+            'Courier',
+            'Courier New',
+        ):
+            fixed_font = wx.Font(font_size,
+                                 wx.FONTFAMILY_DEFAULT,
+                                 wx.FONTSTYLE_NORMAL,
+                                 wx.FONTWEIGHT_NORMAL,
+                                 face=face)
+            if fixed_font.IsFixedWidth():
+                break
+
+        # print 'fixed font: %s [%u]' % (fixed_font.GetFaceName(),
+        #                                fixed_font.GetPointSize())
+
+        self.header.SetFont(fixed_font)
         sizer.Add(self.header, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM,
                   border=UI_BORDER)
         sizer.Add(wx.StaticLine(self), flag=wx.EXPAND)
 
-        self.listbox = wx.ListBox(self, size=wx.Size(210, 500))
-        font = self.listbox.GetFont()
-        font.SetFaceName("Courier")
-        self.listbox.SetFont(font)
+        # Calculate required width
+        dc = wx.MemoryDC()
+        dc.SetFont(fixed_font)
+        # Same width as paper_tape.py seems right to me.
+        (text_width, text_height) = dc.GetTextExtent((23 + 2) * 'M')
+
+        # print 'text_height is %u' % text_height
+
+        self.listbox = wx.ListBox(self, size=wx.Size(text_width, text_height * 24))
+        self.listbox.SetFont(fixed_font)
 
         sizer.Add(self.listbox,
                   proportion=1,

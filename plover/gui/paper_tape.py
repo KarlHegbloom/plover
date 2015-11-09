@@ -57,24 +57,25 @@ class StrokeDisplayDialog(wx.Dialog):
         # Look for a fixed font.
         font_size = wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT).GetPointSize()
         for face in (
+            'monospace',
             'Courier',
             'Courier New',
-            'monospace',
         ):
-            fixed_font = wx.Font(12,
+            fixed_font = wx.Font(font_size,
                                  wx.FONTFAMILY_DEFAULT,
                                  wx.FONTSTYLE_NORMAL,
                                  wx.FONTWEIGHT_NORMAL,
                                  face=face)
             if fixed_font.IsFixedWidth():
                 break
-        print 'fixed font: %s [%u]' % (fixed_font.GetFaceName(),
-                                       fixed_font.GetPointSize())
+        # print 'fixed font: %s [%u]' % (fixed_font.GetFaceName(),
+        #                                fixed_font.GetPointSize())
+        # print 'length of ALL_KEYS is %u' % len(ALL_KEYS)
 
-        # Calculate required width.
+        # Calculate required width and height
         dc = wx.MemoryDC()
         dc.SetFont(fixed_font)
-        text_width = dc.GetTextExtent(ALL_KEYS + 2 * ' ')[0]
+        (text_width, text_height) = dc.GetTextExtent(ALL_KEYS + 2 * ' ')
 
         # Default text style.
         text_style = wx.TextAttr()
@@ -91,7 +92,7 @@ class StrokeDisplayDialog(wx.Dialog):
 
         self.listbox = wx.TextCtrl(self,
                                    style=wx.TE_MULTILINE|wx.TE_READONLY|wx.TE_DONTWRAP|wx.BORDER_NONE,
-                                   size=wx.Size(text_width, 500))
+                                   size=wx.Size(text_width, text_height * 20))
         self.listbox.SetDefaultStyle(text_style)
         self.listbox.SetFont(fixed_font)
 
