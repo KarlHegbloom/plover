@@ -1,3 +1,9 @@
+plover (2.5.8-2.3-karlheg1) unstable; urgency=low
+
+  * Some updates to paper_tape.py, etc.
+
+ -- Karl M. Hegbloom <karl.hegbloom@gmail.com>  Sun, 08 Nov 2015 19:55:58 -0700
+
 plover (2.5.8-2.2-git-bp-keyrework1) unstable; urgency=low
 
   * Merged benoit-pierre:keyboard-handling-rework for testing.
