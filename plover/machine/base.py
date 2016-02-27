@@ -8,13 +8,13 @@
 
 import serial
 import threading
-from plover.exception import SerialPortException
-import collections
+from plover import log
 
 STATE_STOPPED = 'closed'
 STATE_INITIALIZING = 'initializing'
 STATE_RUNNING = 'connected'
 STATE_ERROR = 'disconnected'
+
 
 class StenotypeBase(object):
     """The base class for all Stenotype classes."""
@@ -23,7 +23,6 @@ class StenotypeBase(object):
         self.stroke_subscribers = []
         self.state_subscribers = []
         self.state = STATE_STOPPED
-        self.suppress = None
 
     def start_capture(self):
         """Begin listening for output from the stenotype machine."""
@@ -62,22 +61,27 @@ class StenotypeBase(object):
 
     def _notify(self, steno_keys):
         """Invoke the callback of each subscriber with the given argument."""
-        # If the stroke matches a command while the keyboard is not suppressed 
-        # then the stroke needs to be suppressed after the fact. One of the 
-        # handlers will set the suppress function. This function is passed in to 
-        # prevent threading issues with the gui.
-        self.suppress = None
         for callback in self.stroke_subscribers:
             callback(steno_keys)
-        if self.suppress:
-            self._post_suppress(self.suppress, steno_keys)
-            
-    def _post_suppress(self, suppress, steno_keys):
-        """This is a complicated way for the application to tell the machine to 
-        suppress this stroke after the fact. This only currently has meaning for 
-        the keyboard machine so it can backspace over the last stroke when used 
-        to issue a command when plover is 'off'.
-        """
+
+    def set_suppression(self, enabled):
+        '''Enable keyboard suppression.
+
+        This is only of use for the keyboard machine,
+        to suppress the keyboard when then engine is running.
+        '''
+        pass
+
+    def suppress_last_stroke(self, send_backspaces):
+        '''Suppress the last stroke key events after the fact.
+
+        This is only of use for the keyboard machine,
+        and the engine is resumed with a command stroke.
+
+        Argument:
+
+        send_backspaces -- The function to use to send backspaces.
+        '''
         pass
 
     def _set_state(self, state):
@@ -101,6 +105,7 @@ class StenotypeBase(object):
     def get_option_info():
         """Get the default options for this machine."""
         return {}
+
 
 class ThreadedStenotypeBase(StenotypeBase, threading.Thread):
     """Base class for thread based machines.
@@ -158,12 +163,19 @@ class SerialStenotypeBase(ThreadedStenotypeBase):
         try:
             self.serial_port = serial.Serial(**self.serial_params)
         except (serial.SerialException, OSError) as e:
-            print e
+            log.warning('Machine not connected')
+            log.info('Can\'t open Serial port: %s', str(e))
             self._error()
             return
-        if self.serial_port is None or not self.serial_port.isOpen():
+        if self.serial_port is None:
+            log.warning('Serial port not found: %s', str(e))
             self._error()
             return
+        if not self.serial_port.isOpen():
+            log.warning('Serial port is not open: %s', str(e))
+            self._error()
+            return
+
         return ThreadedStenotypeBase.start_capture(self)
 
     def stop_capture(self):

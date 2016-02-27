@@ -1,3 +1,4 @@
+# coding: utf-8
 # Copyright (c) 2010 Joshua Harlan Lifton.
 # See LICENSE.txt for details.
 
@@ -11,7 +12,6 @@ import wx
 import wx.animate
 from wx.lib.utils import AdjustRectToScreen
 from threading import Thread
-import os.path
 
 from plover.config import SPINNER_FILE
 
@@ -21,7 +21,7 @@ RTS_CTS_STR = 'RTS/CTS'
 XON_XOFF_STR = 'Xon/Xoff'
 OK_STR = 'OK'
 SCAN_STR = "Scan"
-LOADING_STR = "Scanning ports..."
+LOADING_STR = u"Scanning ports…"
 CANCEL_STR = 'Cancel'
 CONNECTION_STR = 'Connection'
 PORT_STR = 'Port'
@@ -90,6 +90,9 @@ class SerialConfigDialog(wx.Dialog):
         self.loading_text.Hide()
         self.gif = wx.animate.GIFAnimationCtrl(self, -1, SPINNER_FILE)
         self.gif.GetPlayer().UseBackgroundColour(True)
+        # Need to call this so the size of the control is not
+        # messed up (100x100 instead of 16x16) on Linux...
+        self.gif.InvalidateBestSize()
         self.gif.Hide()
         sizer.Add(self.gif, flag=wx.ALIGN_CENTER_VERTICAL)
         outline_sizer.Add(sizer, flag=wx.EXPAND)
@@ -366,7 +369,7 @@ class TestApp(wx.App):
     dialog is dismissed.
     """
     def OnInit(self):
-        class SerialConfig(object):
+        class SerialPort(object):
             def __init__(self):
                 self.__dict__.update({
                     'port': None,
@@ -378,9 +381,15 @@ class TestApp(wx.App):
                     'xonxoff': False,
                     'rtscts': False,
                 })
-        ser = SerialConfig()
+        class SerialConfig(object):
+            def get_serial_config_frame_x(self):
+                return 200
+            def get_serial_config_frame_y(self):
+                return 100
+        ser = SerialPort()
+        cfg = SerialConfig()
         print 'Before:', ser.__dict__
-        serial_config_dialog = SerialConfigDialog(ser, None)
+        serial_config_dialog = SerialConfigDialog(ser, None, cfg)
         self.SetTopWindow(serial_config_dialog)
         result = serial_config_dialog.ShowModal()
         print 'After:', ser.__dict__

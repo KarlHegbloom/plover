@@ -6,9 +6,10 @@
 from collections import namedtuple
 import copy
 from mock import patch
-from steno_dictionary import StenoDictionary, StenoDictionaryCollection
-from translation import Translation, Translator, _State, _translate_stroke, _lookup
+from plover.steno_dictionary import StenoDictionary, StenoDictionaryCollection
+from plover.translation import Translation, Translator, _State
 import unittest
+import sys
 from plover.steno import Stroke, normalize_steno
 
 def stroke(s):
@@ -26,6 +27,16 @@ def stroke(s):
         else:
             keys.append('-' + k)
     return Stroke(keys)
+
+def _back_string():
+    # Provides the correct translation to undo a word
+    # depending on the operating system and stores it
+    if 'mapping' not in _back_string.__dict__:
+        if sys.platform.startswith('darwin'):
+            _back_string.mapping = '{#Alt_L(BackSpace)}{^}'
+        else:
+            _back_string.mapping = '{#Control_L(BackSpace)}{^}'
+    return _back_string.mapping
 
 class TranslationTestCase(unittest.TestCase):
     def test_no_translation(self):
@@ -101,18 +112,6 @@ class TranslatorStateSizeTestCase(unittest.TestCase):
         self.assert_size_call(0)
 
 class TranslatorTestCase(unittest.TestCase):
-
-    def test_translate_calls_translate_stroke(self):
-        t = Translator()
-        s = stroke('S')
-        def check(stroke, state, dictionary, output):
-            self.assertEqual(stroke, s)
-            self.assertEqual(state, t._state)
-            self.assertEqual(dictionary, t._dictionary)
-            self.assertEqual(output, t._output)
-
-        with patch('plover.translation._translate_stroke', check) as _translate_stroke:
-            t.translate(s)
 
     def test_listeners(self):
         output1 = []
@@ -243,7 +242,7 @@ class TranslatorTestCase(unittest.TestCase):
         t.translate(stroke('*'))
         self.assertEqual(out.get(), 'S')
         t.translate(stroke('*'))
-        self.assertEqual(out.get(), 'S')  # Undo buffer ran out.
+        self.assertEqual(out.get(), 'S ' + _back_string())  # Undo buffer ran out.
         
         t.set_min_undo_length(3)
         out.clear()
@@ -254,10 +253,8 @@ class TranslatorTestCase(unittest.TestCase):
         t.translate(stroke('*'))
         self.assertEqual(out.get(), 'S')
         t.translate(stroke('*'))
-        self.assertEqual(out.get(), '')
-        t.translate(stroke('*'))
-        self.assertEqual(out.get(), '')  # Undo buffer ran out.
-        
+        self.assertEqual(out.get(), '' )
+
         out.clear()
         d[('S',)] = 't1'
         d[('T',)] = 't2'
@@ -325,7 +322,7 @@ class TranslatorTestCase(unittest.TestCase):
         t.translate(s)
         t.translate(s)
         t.translate(s)
-        self.assertEqual(out.get(), 'S')  # Not enough undo to clear output.
+        self.assertEqual(out.get(), 'S ' + _back_string())  # Not enough undo to clear output.
         
         out.clear()
         t.remove_listener(out.write)
@@ -433,7 +430,9 @@ class TranslateStrokeTestCase(unittest.TestCase):
     def t(self, strokes):
         """A quick way to make a translation."""
         strokes = [stroke(x) for x in strokes.split('/')]
-        return Translation(strokes, _lookup(strokes, self.dc, []))
+        key = tuple(s.rtfcre for s in strokes)
+        translation = self.dc.lookup(key)
+        return Translation(strokes, translation)
 
     def lt(self, translations):
         """A quick way to make a list of translations."""
@@ -444,7 +443,7 @@ class TranslateStrokeTestCase(unittest.TestCase):
         self.d[key] = value
 
     def translate(self, stroke):
-        _translate_stroke(stroke, self.s, self.dc, self.o)
+        self.tlor.translate(stroke)
 
     def assertTranslations(self, expected):
         self.assertEqual(self.s.translations, expected)
@@ -457,7 +456,11 @@ class TranslateStrokeTestCase(unittest.TestCase):
         self.dc = StenoDictionaryCollection()
         self.dc.set_dicts([self.d])
         self.s = _State()
-        self.o = type(self).CaptureOutput()
+        self.o = self.CaptureOutput()
+        self.tlor = Translator()
+        self.tlor.set_dictionary(self.dc)
+        self.tlor.add_listener(self.o)
+        self.tlor.set_state(self.s)
 
     def test_first_stroke(self):
         self.translate(stroke('-B'))
@@ -477,12 +480,23 @@ class TranslateStrokeTestCase(unittest.TestCase):
         self.assertTranslations(self.lt('E'))
         self.assertOutput([], self.lt('E'), self.t('T/A/I/L'))
 
-    def test_with_translation(self):
+    def test_with_translation_1(self):
         self.define('S', 'is')
         self.define('-T', 'that')
         self.s.translations = self.lt('S')
+        self.tlor.set_min_undo_length(2)
         self.translate(stroke('-T'))
         self.assertTranslations(self.lt('S -T'))
+        self.assertOutput([], self.lt('-T'), self.t('S'))
+        self.assertEqual(self.o.output.do[0].english, 'that')
+
+    def test_with_translation_2(self):
+        self.define('S', 'is')
+        self.define('-T', 'that')
+        self.s.translations = self.lt('S')
+        self.tlor.set_min_undo_length(1)
+        self.translate(stroke('-T'))
+        self.assertTranslations(self.lt('-T'))
         self.assertOutput([], self.lt('-T'), self.t('S'))
         self.assertEqual(self.o.output.do[0].english, 'that')
 
@@ -522,7 +536,7 @@ class TranslateStrokeTestCase(unittest.TestCase):
     def test_empty_undo(self):
         self.translate(stroke('*'))
         self.assertTranslations([])
-        self.assertOutput([], [], None)
+        self.assertOutput([], [Translation([Stroke('*')], _back_string())], None)
 
     def test_undo_translation(self):
         self.define('P/P', 'pop')
@@ -545,7 +559,7 @@ class TranslateStrokeTestCase(unittest.TestCase):
         self.s.tail = self.t('T/A/I/L')
         self.translate(stroke('*'))
         self.assertTranslations([])
-        self.assertOutput([], [], self.t('T/A/I/L'))
+        self.assertOutput([], [Translation([Stroke('*')], _back_string())], self.t('T/A/I/L'))
         
     def test_suffix_folding(self):
         self.define('K-L', 'look')

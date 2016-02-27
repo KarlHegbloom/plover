@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # Copyright (c) 2012 Hesky Fisher
 # See LICENSE.txt for details.
 #
@@ -48,7 +47,6 @@ if sys.platform.startswith('win32'):
 else:
     import fcntl
     import os
-    import tempfile
 
 
     class PloverLock(object):

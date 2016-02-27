@@ -16,22 +16,15 @@ interface.
 """
 
 
+import os
 # Import plover modules.
 import plover.config as conf
 import plover.formatting as formatting
-import plover.oslayer.keyboardcontrol as keyboardcontrol
-import plover.steno as steno
-import plover.machine.base
-import plover.machine.sidewinder
-import plover.steno_dictionary as steno_dictionary
 import plover.steno as steno
 import plover.translation as translation
-from plover.dictionary.base import load_dictionary
 from plover.exception import InvalidConfigurationError,DictionaryLoaderException
-import plover.dictionary.json_dict as json_dict
-import plover.dictionary.rtfcre_dict as rtfcre_dict
 from plover.machine.registry import machine_registry, NoSuchMachineException
-from plover.logger import Logger
+from plover import log
 from plover.dictionary.loading_manager import manager as dict_manager
 
 # Because 2.7 doesn't have this yet.
@@ -55,10 +48,7 @@ def init_engine(engine, config):
         raise InvalidConfigurationError(unicode(e))
     engine.get_dictionary().set_dicts(dicts)
 
-    log_file_name = config.get_log_file_name()
-    if log_file_name:
-        engine.set_log_file_name(log_file_name)
-
+    engine.set_log_file_name(config)
     engine.enable_stroke_logging(config.get_enable_stroke_logging())
     engine.enable_translation_logging(config.get_enable_translation_logging())
     engine.set_space_placement(config.get_space_placement())
@@ -101,7 +91,7 @@ def update_engine(engine, old, new):
 
     log_file_name = new.get_log_file_name()
     if old.get_log_file_name() != log_file_name:
-        engine.set_log_file_name(log_file_name)
+        engine.set_log_file_name(new)
 
     enable_stroke_logging = new.get_enable_stroke_logging()
     if old.get_enable_stroke_logging() != enable_stroke_logging:
@@ -159,8 +149,7 @@ class StenoEngine(object):
 
         self.translator = translation.Translator()
         self.formatter = formatting.Formatter()
-        self.logger = Logger()
-        self.translator.add_listener(self.logger.log_translation)
+        self.translator.add_listener(log.translation)
         self.translator.add_listener(self.formatter.format)
         # This seems like a reasonable number. If this becomes a problem it can
         # be parameterized.
@@ -172,16 +161,16 @@ class StenoEngine(object):
         self.set_is_running(False)
 
     def set_machine(self, machine):
-        if self.machine:
+        if self.machine is not None:
             self.machine.remove_state_callback(self._machine_state_callback)
             self.machine.remove_stroke_callback(
                 self._translator_machine_callback)
-            self.machine.remove_stroke_callback(self.logger.log_stroke)
+            self.machine.remove_stroke_callback(log.stroke)
             self.machine.stop_capture()
         self.machine = machine
-        if self.machine:
+        if self.machine is not None:
             self.machine.add_state_callback(self._machine_state_callback)
-            self.machine.add_stroke_callback(self.logger.log_stroke)
+            self.machine.add_stroke_callback(log.stroke)
             self.machine.add_stroke_callback(self._translator_machine_callback)
             self.machine.start_capture()
             self.set_is_running(self.is_running)
@@ -202,8 +191,8 @@ class StenoEngine(object):
         else:
             self.translator.clear_state()
             self.formatter.set_output(self.command_only_output)
-        if isinstance(self.machine, plover.machine.sidewinder.Stenotype):
-            self.machine.suppress_keyboard(self.is_running)
+        if self.machine is not None:
+            self.machine.set_suppression(self.is_running)
         for callback in self.subscribers:
             callback(None)
 
@@ -237,13 +226,23 @@ class StenoEngine(object):
         """
         self.subscribers.append(callback)
         
-    def set_log_file_name(self, filename):
+    def set_log_file_name(self, config):
         """Set the file name for log output."""
-        self.logger.set_filename(filename)
+        filename = config.get_log_file_name()
+        if not filename:
+            return
+        if os.path.realpath(filename) == os.path.realpath(log.LOG_FILENAME):
+            log.warning('stroke logging must use a different file than %s, '
+                        'renaming to %s', log.LOG_FILENAME, conf.DEFAULT_LOG_FILE)
+            filename = conf.DEFAULT_LOG_FILE
+            config.set_log_file_name(filename)
+            with open(config.target_file, 'wb') as f:
+                config.save(f)
+        log.set_stroke_filename(filename)
 
     def enable_stroke_logging(self, b):
         """Turn stroke logging on or off."""
-        self.logger.enable_stroke_logging(b)
+        log.enable_stroke_logging(b)
 
     def set_space_placement(self, s):
         """Set whether spaces will be inserted before the output or after the output."""
@@ -251,7 +250,7 @@ class StenoEngine(object):
         
     def enable_translation_logging(self, b):
         """Turn translation logging on or off."""
-        self.logger.enable_translation_logging(b)
+        log.enable_translation_logging(b)
 
     def add_stroke_listener(self, listener):
         self.stroke_listeners.append(listener)

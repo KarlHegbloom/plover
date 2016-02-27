@@ -13,7 +13,7 @@ import threading
 
 import plover.dictionary.json_dict as json_dict
 import plover.dictionary.rtfcre_dict as rtfcre_dict
-from plover.config import JSON_EXTENSION, RTF_EXTENSION, CONFIG_DIR
+from plover.config import JSON_EXTENSION, RTF_EXTENSION
 from plover.exception import DictionaryLoaderException
 
 dictionaries = {
@@ -35,8 +35,8 @@ def load_dictionary(filename):
     loader = dict_type.load_dictionary
 
     try:
-        with open(filename, 'rb') as f:
-            d = loader(f.read())
+        with open(filename, 'rb') as fp:
+            d = loader(fp)
     except IOError as e:
         raise DictionaryLoaderException(unicode(e))
 

@@ -1,0 +1,84 @@
+version: '{build}'
+
+skip_tags: true
+
+pull_requests:
+
+  do_not_increment_build_number: true
+
+deploy:
+
+- provider: GitHub
+  release: weekly-v$(appveyor_build_version)
+  description: Weekly Pre-release
+  prerelease: true
+  auth_token:
+    secure: m8kBg3jFX2k516nlmWkvxNCrBwlQZMaa6hNn7A+rktl781BRTyKssCXQqKAwPJLs
+  artifact: executable
+  on:
+    branch: weekly
+
+environment:
+
+  global:
+    PIP_ACCEL_LOG_FORMAT: "%(name)-18s %(levelname)s %(message)s"
+
+  matrix:
+
+    - PYTHON: "C:\\Python27"
+      PYTHON_VERSION: "2.7"
+      PYTHON_ARCH: "32"
+
+cache:
+  # Keep cache of downloaded pip packages.
+  - C:\Users\appveyor\AppData\Local\pip
+  # Keep downloaded packages.
+  - C:\Dist
+
+init:
+  - "ECHO %PYTHON% %PYTHON_VERSION% %PYTHON_ARCH%"
+
+install:
+
+  # Prepend newly installed Python to the PATH of this build (this cannot be
+  # done from inside the powershell script as it would require to restart
+  # the parent CMD process).
+  - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
+
+  - "python --version"
+
+  # Install wget module.
+  - "pip --disable-pip-version-check --timeout 5 --retries 2 install wget"
+
+  # Setup the rest of the environment.
+  - "python windows\\helper.py setup"
+
+  - "pip --disable-pip-version-check list"
+
+  # Update PATH.
+  - "SET PATH=C:\\Prog\\7-Zip;%PATH%"
+
+build:
+  verbosity: minimal
+
+before_build:
+  # Update version number from VCS.
+  - "python setup.py patch_version"
+  # And the build number accordingly.
+  - ps: "Update-AppveyorBuild -Version \"$(python setup.py --version)\""
+  - "ECHO appveyor_build_version: %appveyor_build_version%"
+
+build_script:
+  - "ECHO PATH=%PATH%"
+
+after_build:
+  - "python windows\\helper.py dist"
+
+test_script:
+  - "python setup.py test"
+
+artifacts:
+
+  - path: dist\*.exe
+    name: executable
+

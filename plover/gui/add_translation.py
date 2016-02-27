@@ -3,7 +3,6 @@
 
 import wx
 from wx.lib.utils import AdjustRectToScreen
-import sys
 from plover.steno import normalize_steno
 import plover.gui.util as util
 
@@ -18,11 +17,9 @@ class AddTranslationDialog(wx.Dialog):
     other_instances = []
     
     def __init__(self, parent, engine, config):
-        pos = (config.get_translation_frame_x(), 
+        pos = (config.get_translation_frame_x(),
                config.get_translation_frame_y())
-        wx.Dialog.__init__(self, parent, wx.ID_ANY, TITLE, 
-                           pos, wx.DefaultSize, 
-                           wx.DEFAULT_DIALOG_STYLE, wx.DialogNameStr)
+        wx.Dialog.__init__(self, parent, title=TITLE, pos=pos)
 
         self.config = config
 
@@ -30,7 +27,7 @@ class AddTranslationDialog(wx.Dialog):
         self.strokes_text = wx.TextCtrl(self, style=wx.TE_PROCESS_ENTER)
         self.translation_text = wx.TextCtrl(self, style=wx.TE_PROCESS_ENTER)
         button = wx.Button(self, id=wx.ID_OK, label='Add to dictionary')
-        cancel = wx.Button(self, id=wx.ID_CANCEL)
+        cancel = wx.Button(self, id=wx.ID_CANCEL, label='Cancel')
         self.stroke_mapping_text = wx.StaticText(self)
         self.translation_mapping_text = wx.StaticText(self)
         
@@ -130,12 +127,13 @@ class AddTranslationDialog(wx.Dialog):
 
     def on_close(self, event=None):
         self.engine.translator.set_state(self.previous_state)
+        self.other_instances.remove(self)
+        self.Destroy()
+        self.Update()
         try:
             util.SetForegroundWindow(self.last_window)
         except:
             pass
-        self.other_instances.remove(self)
-        self.Destroy()
 
     def on_strokes_change(self, event):
         key = self._normalized_strokes()
@@ -147,14 +145,15 @@ class AddTranslationDialog(wx.Dialog):
                 label = '%s maps to %s' % (strokes, translation)
             else:
                 label = '%s is not in the dictionary' % strokes
+            label = util.shorten_unicode(label)
         else:
             label = ''
         self.stroke_mapping_text.SetLabel(label)
         self.GetSizer().Layout()
 
     def on_translation_change(self, event):
-        # TODO: normalize dict entries to make reverse lookup more reliable with 
-        # whitespace.
+        # TODO: normalize dict entries to make reverse lookup more reliable
+        # with whitespace.
         translation = event.GetString().strip()
         if translation:
             d = self.engine.get_dictionary()
@@ -164,27 +163,33 @@ class AddTranslationDialog(wx.Dialog):
                 label = '%s is mapped from %s' % (translation, strokes)
             else:
                 label = '%s is not in the dictionary' % translation
+            label = util.shorten_unicode(label)
         else:
             label = ''
         self.translation_mapping_text.SetLabel(label)
         self.GetSizer().Layout()
-        
+
     def on_strokes_gained_focus(self, event):
         self.engine.get_dictionary().add_filter(self.stroke_dict_filter)
         self.engine.translator.set_state(self.strokes_state)
+        event.Skip()
         
     def on_strokes_lost_focus(self, event):
         self.engine.get_dictionary().remove_filter(self.stroke_dict_filter)
         self.engine.translator.set_state(self.previous_state)
+        event.Skip()
 
     def on_translation_gained_focus(self, event):
         self.engine.translator.set_state(self.translation_state)
+        event.Skip()
         
     def on_translation_lost_focus(self, event):
         self.engine.translator.set_state(self.previous_state)
+        event.Skip()
 
     def on_button_gained_focus(self, event):
         self.strokes_text.SetFocus()
+        event.Skip()
         
     def stroke_dict_filter(self, key, value):
         # Only allow translations with special entries. Do this by looking for 
@@ -209,4 +214,4 @@ def Show(parent, engine, config):
     dialog_instance.Show()
     dialog_instance.Raise()
     dialog_instance.strokes_text.SetFocus()
-    util.SetTopApp()
+    util.SetTopApp(dialog_instance)

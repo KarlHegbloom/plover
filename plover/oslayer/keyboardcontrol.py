@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # Copyright (c) 2010 Joshua Harlan Lifton.
 # See LICENSE.txt for details.
 #
@@ -22,18 +22,42 @@ KEYBOARDCONTROL_NOT_FOUND_FOR_OS = \
         "No keyboard control module was found for os %s" % sys.platform
 
 if sys.platform.startswith('linux'):
-    import xkeyboardcontrol as keyboardcontrol
+    from plover.oslayer import xkeyboardcontrol as keyboardcontrol
 elif sys.platform.startswith('win32'):
-    import winkeyboardcontrol as keyboardcontrol
+    from plover.oslayer import winkeyboardcontrol as keyboardcontrol
 elif sys.platform.startswith('darwin'):
-    import osxkeyboardcontrol as keyboardcontrol
+    from plover.oslayer import osxkeyboardcontrol as keyboardcontrol
 else:
     raise Exception(KEYBOARDCONTROL_NOT_FOUND_FOR_OS)
 
 
 class KeyboardCapture(keyboardcontrol.KeyboardCapture):
     """Listen to keyboard events."""
-    pass
+
+    """Supported keys."""
+    SUPPORTED_KEYS = [chr(n) for n in range(ord('a'), ord('z') + 1)]
+    for n in range(12):
+        SUPPORTED_KEYS.append('F%u' % (n + 1))
+        for c in '`1234567890-=[];\',./\\':
+            SUPPORTED_KEYS.append(c)
+            SUPPORTED_KEYS.extend(
+                '''
+                BackSpace
+                Delete
+                Down
+                End
+                Escape
+                Home
+                Insert
+                Left
+                Page_Down
+                Page_Up
+                Return
+                Right
+                Tab
+                Up
+                space
+                '''.split())
 
 
 class KeyboardEmulation(keyboardcontrol.KeyboardEmulation):
@@ -42,23 +66,34 @@ class KeyboardEmulation(keyboardcontrol.KeyboardEmulation):
 
 
 if __name__ == '__main__':
+    import time
+
     kc = KeyboardCapture()
     ke = KeyboardEmulation()
 
-    def test(event):
-        print event
-        ke.send_backspaces(3)
-        ke.send_string('foo')
+    pressed = set()
+    status = 'pressed: '
 
-    # For the windows version
-    kc._create_own_pump = True
+    def test(key, action):
+        global pressed, status
+        print key, action
+        if 'pressed' == action:
+            pressed.add(key)
+        elif key in pressed:
+            pressed.remove(key)
+        new_status = 'pressed: ' + '+'.join(pressed)
+        if status != new_status:
+            ke.send_backspaces(len(status))
+            ke.send_string(new_status)
+            status = new_status
 
-    kc.key_down = test
-    kc.key_up = test
+    kc.key_down = lambda k: test(k, 'pressed')
+    kc.key_up = lambda k: test(k, 'released')
+    kc.suppress_keyboard(KeyboardCapture.SUPPORTED_KEYS)
     kc.start()
     print 'Press CTRL-c to quit.'
     try:
         while True:
-            pass
+            time.sleep(1)
     except KeyboardInterrupt:
         kc.cancel()
