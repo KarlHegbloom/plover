@@ -7,5 +7,5 @@ Build-Depends: debhelper (>= 9), python-dev
 
 Package: plover
 Architecture: any
-Depends: ${misc:Depends}, python-appdirs, python-serial (>=2.6-1ppa1), python-wxgtk2.8, python-xlib, wmctrl
+Depends: ${misc:Depends}, python-appdirs, python-serial (>=2.6-1ppa1), python-wxgtk2.8, python-xlib, python-hid, python-hidapi, wmctrl
 Description: Open Source Stenography Software.

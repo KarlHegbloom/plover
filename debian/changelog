@@ -1,3 +1,9 @@
+plover (2.5.8-2.3-git) unstable; urgency=low
+
+  * Merged ostenprj-for-pulls
+
+ -- Karl Hegbloom <karl.hegbloom@gmail.com>  Sat, 27 Feb 2016 03:00:24 -0700
+
 plover (2.5.8-2.2-git-bp-keyrework1) unstable; urgency=low
 
   * Merged benoit-pierre:keyboard-handling-rework for testing.
