@@ -124,6 +124,8 @@ class StrokeDisplayDialog(wx.Dialog):
 
     def on_style(self, event=None):
         format = self.choice.GetStringSelection()
+        if not format:
+            return
         self.formatter = getattr(self, format.lower() + '_format')
         self.listbox.Clear()
         self.line_lengths = []
@@ -146,7 +148,7 @@ class StrokeDisplayDialog(wx.Dialog):
             index = STENO_KEY_ORDER[key]
             text[index] = ALL_KEYS[index]
         text = ''.join(text)
-        return text        
+        return text
 
     def raw_format(self, stroke):
         return stroke.rtfcre
